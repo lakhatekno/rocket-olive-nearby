@@ -35,7 +35,7 @@ const  showPosition = (position) => {
   data.map( outlet => {
     outlet.jarak = (haversineDistance(outlet.longitude, outlet.latitude, currentLongitude, currentLatitude)/1000).toFixed(2);
   });
-  console.log(data);
+  map.setView([currentLongitude, currentLatitude], 13)
 }
 
 const showError = (error) => {
@@ -152,6 +152,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         outletContainer.innerHTML += outletCard(data);
       });
       loadingMarker(dataFilter.slice(0, 10), 'outlet');
+      const destinations = document.querySelectorAll('#outlet-card');
+      destinations.forEach( destination => {
+        destination.addEventListener('click', (e) => {
+          coordinate = [
+            parseFloat(destination.getAttribute("longitude")),
+            parseFloat(destination.getAttribute("latitude")),
+            currentLongitude,
+            currentLatitude
+          ];
+          route = ruteKeOutlet(coordinate, map, route, 'ganti');
+          btnEnd.removeAttribute('disabled');
+          btnEnd.classList.remove('disabled');
+          removeMarker();
+        });
+      });
     });
   });
 
@@ -162,6 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnEnd.classList.add('disabled'); // nonaktifin
       loadingMarker(dataFilter.sort((a, b) => a.jarak - b.jarak ).slice(0, 10), 'outlet');
       loadingMarker(currentPos, 'current');
+      map.setView([currentLongitude, currentLatitude], 14);
     }
   });
 });

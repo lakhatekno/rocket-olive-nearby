@@ -17,7 +17,10 @@ const ruteKeOutlet = (coordinates, map, route, mode) => {
       ],
       router: L.Routing.graphHopper('15fb4f2f-5e2d-427e-a02d-e14e5dab17ad')
     }).addTo(map);
-    removeInformation();
+
+    route.on('routesfound', () => {
+      removeInformation();
+    })
     return route;
   } else {
     if (route) {
