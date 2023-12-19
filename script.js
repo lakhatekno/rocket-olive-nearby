@@ -1,37 +1,17 @@
 import data from './data.js'
-const iconOlive = L.icon({
-  iconUrl: './assets/icons/olive-logo.png',
-  iconSize: [42, 24],
-  iconAnchor: [21, 24],
-  popupAnchor: [-3, -76],
-  shadowSize: [68, 95],
-  shadowAnchor: [22, 94]
-});
-const iconRocket = L.icon({
-  iconUrl: './assets/icons/rocket-logo.png',
-  iconSize: [84, 47],
-  iconAnchor: [42, 47],
-  popupAnchor: [-3, -76],
-  shadowSize: [68, 95],
-  shadowAnchor: [22, 94]
-});
-const iconCurrent = L.icon({
-  iconUrl: './assets/icons/current-location.png',
-  iconSize: [60, 60],
-  iconAnchor: [30, 60],
-  shadowSize: [30, 60],
-  shadowAnchor: [30, 30]
-});
+import { haversineDistance } from './programs/distance.js';
+import { ruteKeOutlet } from './programs/routing-machine.js';
+import { capitalize } from './programs/capitalize.js';
+import { iconOlive, iconRocket, iconCurrent } from './programs/icons-settings.js';
+import { outletCard } from './elements/outlet-card.js';
+import { cariBrand } from './programs/filters.js';
 
 let currentLongitude;
 let currentLatitude;
 let dataFilter = data;
-
-const capitalize = (sentence) =>{
-  return sentence.replace(/\b\w/g, (char) => {
-    return char.toUpperCase();
-  });
-}
+let route;
+let coordinate;
+let currentPos;
 
 // akses lokasi perangkat
 const getLocation = () => {
@@ -45,17 +25,15 @@ const getLocation = () => {
 const  showPosition = (position) => {
   currentLongitude = position.coords.latitude;
   currentLatitude = position.coords.longitude;
-  // -7.8203922, 110.3580546 --> kos
-  const currentPos = [];
+  currentPos = [];
   currentPos.push({
     "longitude": `${currentLongitude}`,
     "latitude": `${currentLatitude}`,
   });
   loadingMarker(currentPos, 'current');
-
   // apply jarak ke tiap outlet
   data.map( outlet => {
-    outlet.jarak = haversineDistance(outlet.longitude, outlet.latitude, currentLongitude, currentLatitude);
+    outlet.jarak = (haversineDistance(outlet.longitude, outlet.latitude, currentLongitude, currentLatitude)/1000).toFixed(2);
   });
   console.log(data);
 }
@@ -77,8 +55,6 @@ const showError = (error) => {
   }
 }
 
-getLocation();
-
 // pengerjaan map
 const map = L.map('map').setView([-7.7969014, 110.3775107], 13);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -96,7 +72,6 @@ const loadingMarker = (dataToLoad, pinMode) => {
     currentMarker.map( marker => map.removeLayer(marker));
     currentMarker = [];
   }
-
   dataToLoad.map( mark => {
     let newMark;
     if (mark.brand === "olive") {
@@ -126,43 +101,42 @@ const loadingMarker = (dataToLoad, pinMode) => {
   }
 };
 
-let route;
-// routing machine
-function ruteKeOutlet(coordinates, mode) {
-  if (route) {
-    route.setWaypoints([]);
-  }
-  route = L.Routing.control({
-    waypoints: [
-        L.latLng(currentLongitude, currentLatitude),
-        L.latLng(coordinates[0], coordinates[1])
-    ],
-    routeWhileDragging: true
-  });
-  if (mode === 'routing') {
-    route.addTo(map);
-  } else if (mode === 'distance') {
-    return route.summary.totalDistance;
-  }
-}
-
-// filter
-const cariBrand = (brand) => {
-  const recordsBrand = data.filter(record => record.brand === brand);
-  return recordsBrand;
+const removeMarker = () => {
+  markers.map(marker => map.removeLayer(marker));
+  currentMarker.map( marker => map.removeLayer(marker));
 };
 
-window.onload = loadingMarker(data, 'outlet');
-
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async () => {
+  setTimeout(getLocation(), 500);
   loadingMarker(data, 'outlet');
   const checkboxes = document.querySelectorAll('input[name="brand"]');
-  const searchBar = document.querySelector('#search');
   const outletContainer = document.querySelector('#list_outlet');
+  const btnEnd = document.querySelector('#end')
   outletContainer.innerHTML = '';
-  dataFilter.map( data => {
-    outletContainer.innerHTML += container(data);
-  });
+  setTimeout(() => {
+    dataFilter.sort((a, b) => a.jarak - b.jarak );
+    dataFilter.slice(0, 10).map( data => {
+      outletContainer.innerHTML += outletCard(data);
+    });
+    loadingMarker(dataFilter.slice(0, 10), 'outlet');
+
+  // menambahkan event saat outlet card diclick
+    const destinations = document.querySelectorAll('#outlet-card');
+    destinations.forEach( destination => {
+      destination.addEventListener('click', (e) => {
+        coordinate = [
+          parseFloat(destination.getAttribute("longitude")),
+          parseFloat(destination.getAttribute("latitude")),
+          currentLongitude,
+          currentLatitude
+        ];
+        route = ruteKeOutlet(coordinate, map, route, 'ganti');
+        btnEnd.removeAttribute('disabled');
+        btnEnd.classList.remove('disabled');
+        removeMarker();
+      });
+    });
+  }, 500);
 
   // event ketika filter checkbox ditrigger
   checkboxes.forEach(checkbox => {
@@ -173,47 +147,21 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         dataFilter = dataFilter.filter(record => record.brand !== e.target.value);
       }
-      dataFilter.sort((a, b) => a.id - b.id );
-      dataFilter.map( data => {
-        outletContainer.innerHTML += container(data);
+      dataFilter.sort((a, b) => a.jarak - b.jarak );
+      dataFilter.slice(0, 10).map( data => {
+        outletContainer.innerHTML += outletCard(data);
       });
+      loadingMarker(dataFilter.slice(0, 10), 'outlet');
     });
   });
 
-  // menambahkan event saat outlet card diclick
-  const destinations = document.querySelectorAll('h3');
-  console.log(destinations)
-  destinations.forEach( destination => {
-  destination.addEventListener('click', (e) => {
-    getLocation();
-    ruteKeOutlet([destination.getAttribute("longitude"), destination.getAttribute("latitude")], 'route');
-  })
-})
+  btnEnd.addEventListener('click', () => {
+    if (!btnEnd.disabled) { // disable false -> aktif
+      ruteKeOutlet(coordinate, map, route, 'hapus');
+      btnEnd.setAttribute('disabled', true); // nonaktifin
+      btnEnd.classList.add('disabled'); // nonaktifin
+      loadingMarker(dataFilter.sort((a, b) => a.jarak - b.jarak ).slice(0, 10), 'outlet');
+      loadingMarker(currentPos, 'current');
+    }
+  });
 });
-
-// outlet listing
-const container = (data) => {
-  return `
-    <div class="outlet-card border rounded-3 px-3 py-1">
-      <h3 longitude="${data.longitude}" latitude="${data.latitude}" class="fs-5">${capitalize(data.brand)} ${capitalize(data.nama_outlet)}</h3>
-      <p>Jarak: </p>
-    </div>
-  `
-};
-
-// fungsi nyari jarak menggunakan latitude-longitude
-const degreesToRadians = (degrees) => {
-  return degrees * (Math.PI/180);
-}
-
-const haversineDistance = (lat1, lon1, lat2, lon2) => {
-  const earthRadius = 6371000; // Radius bumi dalam meter
-  const dLat = degreesToRadians(lat2 - lat1);
-  const dLon = degreesToRadians(lon2 - lon1);
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(degreesToRadians(lat1)) * Math.cos(degreesToRadians(lat2)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = earthRadius * c;
-  return distance;
-};
